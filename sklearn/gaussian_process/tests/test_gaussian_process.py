@@ -5,16 +5,15 @@ Testing for Gaussian Process module (sklearn.gaussian_process)
 # Author: Vincent Dubourg <vincent.dubourg@gmail.com>
 # License: BSD 3 clause
 
-from nose.tools import raises
-from nose.tools import assert_true
-
 import numpy as np
+
+import pytest
 
 from sklearn.gaussian_process import GaussianProcess
 from sklearn.gaussian_process import regression_models as regression
 from sklearn.gaussian_process import correlation_models as correlation
 from sklearn.datasets import make_regression
-from sklearn.utils.testing import assert_greater
+from sklearn.utils.testing import assert_greater, assert_true, assert_raises
 
 
 f = lambda x: x * np.sin(x)
@@ -98,22 +97,22 @@ def test_2d_2d(regr=regression.constant, corr=correlation.squared_exponential,
     assert_true(np.allclose(y_pred, y) and np.allclose(MSE, 0.))
 
 
-@raises(ValueError)
 def test_wrong_number_of_outputs():
     gp = GaussianProcess()
-    gp.fit([[1, 2, 3], [4, 5, 6]], [1, 2, 3])
+    assert_raises(ValueError, gp.fit, [[1, 2, 3], [4, 5, 6]], [1, 2, 3])
 
 
-def test_more_builtin_correlation_models(random_start=1):
+@pytest.mark.parametrize(
+        'corr',
+        ['absolute_exponential', 'squared_exponential', 'cubic', 'linear'])
+def test_more_builtin_correlation_models(corr):
     # Repeat test_1d and test_2d for several built-in correlation
     # models specified as strings.
-    all_corr = ['absolute_exponential', 'squared_exponential', 'cubic',
-                'linear']
+    random_start = 1
 
-    for corr in all_corr:
-        test_1d(regr='constant', corr=corr, random_start=random_start)
-        test_2d(regr='constant', corr=corr, random_start=random_start)
-        test_2d_2d(regr='constant', corr=corr, random_start=random_start)
+    test_1d(regr='constant', corr=corr, random_start=random_start)
+    test_2d(regr='constant', corr=corr, random_start=random_start)
+    test_2d_2d(regr='constant', corr=corr, random_start=random_start)
 
 
 def test_ordinary_kriging():
@@ -133,11 +132,20 @@ def test_no_normalize():
     assert_true(np.allclose(y_pred, y))
 
 
+def test_batch_size():
+    # TypeError when using batch_size on Python 3, see
+    # https://github.com/scikit-learn/scikit-learn/issues/7329 for more
+    # details
+    gp = GaussianProcess()
+    gp.fit(X, y)
+    gp.predict(X, batch_size=1)
+    gp.predict(X, batch_size=1, eval_MSE=True)
+
+
 def test_random_starts():
     # Test that an increasing number of random-starts of GP fitting only
     # increases the reduced likelihood function of the optimal theta.
     n_samples, n_features = 50, 3
-    np.random.seed(0)
     rng = np.random.RandomState(0)
     X = rng.randn(n_samples, n_features) * 2 - 1
     y = np.sin(X).sum(axis=1) + np.sin(3 * X).sum(axis=1)

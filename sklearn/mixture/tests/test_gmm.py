@@ -1,19 +1,24 @@
-# These tests are those of the deprecated GMM class
-
+# Important note for the deprecation cleaning of 0.20 :
+# All the functions and classes of this file have been deprecated in 0.18.
+# When you remove this file please remove the related files
+# - 'sklearn/mixture/dpgmm.py'
+# - 'sklearn/mixture/gmm.py'
+# - 'sklearn/mixture/test_dpgmm.py'
 import unittest
 import copy
 import sys
-import warnings
 
-from nose.tools import assert_true
+import pytest
+
 import numpy as np
-from numpy.testing import (assert_array_equal, assert_array_almost_equal,
-                           assert_raises)
+from numpy.testing import assert_array_equal, assert_array_almost_equal
+
 from scipy import stats
 from sklearn import mixture
 from sklearn.datasets.samples_generator import make_spd_matrix
-from sklearn.utils.testing import (assert_greater, assert_raise_message,
-                                   assert_warns_message, ignore_warnings)
+from sklearn.utils.testing import (assert_true, assert_greater,
+                                   assert_raise_message, assert_warns_message,
+                                   ignore_warnings, assert_raises)
 from sklearn.metrics.cluster import adjusted_rand_score
 from sklearn.externals.six.moves import cStringIO as StringIO
 
@@ -30,7 +35,7 @@ def test_sample_gaussian():
     mu = rng.randint(10) * rng.rand(n_features)
     cv = (rng.rand(n_features) + 1.0) ** 2
 
-    samples = mixture.sample_gaussian(
+    samples = mixture.gmm._sample_gaussian(
         mu, cv, covariance_type='diag', n_samples=n_samples)
 
     assert_true(np.allclose(samples.mean(axis), mu, atol=1.3))
@@ -38,7 +43,7 @@ def test_sample_gaussian():
 
     # the same for spherical covariances
     cv = (rng.rand() + 1.0) ** 2
-    samples = mixture.sample_gaussian(
+    samples = mixture.gmm._sample_gaussian(
         mu, cv, covariance_type='spherical', n_samples=n_samples)
 
     assert_true(np.allclose(samples.mean(axis), mu, atol=1.5))
@@ -48,16 +53,15 @@ def test_sample_gaussian():
     # and for full covariances
     A = rng.randn(n_features, n_features)
     cv = np.dot(A.T, A) + np.eye(n_features)
-    samples = mixture.sample_gaussian(
+    samples = mixture.gmm._sample_gaussian(
         mu, cv, covariance_type='full', n_samples=n_samples)
     assert_true(np.allclose(samples.mean(axis), mu, atol=1.3))
     assert_true(np.allclose(np.cov(samples), cv, atol=2.5))
 
     # Numerical stability check: in SciPy 0.12.0 at least, eigh may return
     # tiny negative values in its second return value.
-    from sklearn.mixture import sample_gaussian
-    x = sample_gaussian([0, 0], [[4, 3], [1, .1]],
-                        covariance_type='full', random_state=42)
+    x = mixture.gmm._sample_gaussian(
+        [0, 0], [[4, 3], [1, .1]], covariance_type='full', random_state=42)
     assert_true(np.isfinite(x).all())
 
 
@@ -158,7 +162,6 @@ def test_GMM_attributes():
     assert_raises(ValueError, g._set_covars, [])
     assert_raises(ValueError, g._set_covars,
                   np.zeros((n_components - 2, n_features)))
-
     assert_raises(ValueError, mixture.GMM, n_components=20,
                   covariance_type='badcovariance_type')
 
@@ -309,7 +312,7 @@ class GMMTester():
         with ignore_warnings(category=DeprecationWarning):
             g.fit(X)
             trainll = g.score(X)
-            if isinstance(g, mixture.DPGMM):
+            if isinstance(g, mixture.dpgmm._DPGMMBase):
                 self.assertTrue(np.sum(np.abs(trainll / 100)) < 5)
             else:
                 self.assertTrue(np.sum(np.abs(trainll / 100)) < 2)
@@ -494,10 +497,11 @@ def check_positive_definite_covars(covariance_type):
             assert_greater(np.linalg.det(c), 0)
 
 
-def test_positive_definite_covars():
+@pytest.mark.parametrize('covariance_type',
+                         ["full", "tied", "diag", "spherical"])
+def test_positive_definite_covars(covariance_type):
     # Check positive definiteness for all covariance types
-    for covariance_type in ["full", "tied", "diag", "spherical"]:
-        yield check_positive_definite_covars, covariance_type
+    check_positive_definite_covars(covariance_type)
 
 
 # This function tests the deprecated old GMM class

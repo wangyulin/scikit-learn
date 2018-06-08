@@ -21,13 +21,15 @@ if mp is not None:
 class ParallelBackendBase(with_metaclass(ABCMeta)):
     """Helper abc which defines all methods a ParallelBackend must implement"""
 
+    supports_timeout = False
+
     @abstractmethod
     def effective_n_jobs(self, n_jobs):
         """Determine the number of jobs that can actually run in parallel
 
-        n_jobs is the is the number of workers requested by the callers.
-        Passing n_jobs=-1 means requesting all available workers for instance
-        matching the number of CPU cores on the worker host(s).
+        n_jobs is the number of workers requested by the callers. Passing
+        n_jobs=-1 means requesting all available workers for instance matching
+        the number of CPU cores on the worker host(s).
 
         This method should return a guesstimate of the number of workers that
         can actually perform work concurrently. The primary use case is to make
@@ -86,7 +88,7 @@ class ParallelBackendBase(with_metaclass(ABCMeta)):
         managed by the backend it-self: if we expect no new tasks, there is no
         point in re-creating a new working pool.
         """
-        # Does nothing by default: to be overriden in subclasses when canceling
+        # Does nothing by default: to be overridden in subclasses when canceling
         # tasks is possible.
         pass
 
@@ -236,6 +238,8 @@ class ThreadingBackend(PoolManagerMixin, ParallelBackendBase):
     "with nogil" block or an expensive call to a library such as NumPy).
     """
 
+    supports_timeout = True
+
     def configure(self, n_jobs=1, parallel=None, **backend_args):
         """Build a process or thread pool and return the number of workers"""
         n_jobs = self.effective_n_jobs(n_jobs)
@@ -259,24 +263,30 @@ class MultiprocessingBackend(PoolManagerMixin, AutoBatchingMixin,
     # Environment variables to protect against bad situations when nesting
     JOBLIB_SPAWNED_PROCESS = "__JOBLIB_SPAWNED_PARALLEL__"
 
+    supports_timeout = True
+
     def effective_n_jobs(self, n_jobs):
         """Determine the number of jobs which are going to run in parallel.
 
         This also checks if we are attempting to create a nested parallel
         loop.
         """
-        if mp.current_process().daemon:
-            # Daemonic processes cannot have children
-            warnings.warn(
-                'Multiprocessing-backed parallel loops cannot be nested,'
-                ' setting n_jobs=1',
-                stacklevel=3)
+        if mp is None:
             return 1
 
-        elif threading.current_thread().name != 'MainThread':
+        if mp.current_process().daemon:
+            # Daemonic processes cannot have children
+            if n_jobs != 1:
+                warnings.warn(
+                    'Multiprocessing-backed parallel loops cannot be nested,'
+                    ' setting n_jobs=1',
+                    stacklevel=3)
+            return 1
+
+        if not isinstance(threading.current_thread(), threading._MainThread):
             # Prevent posix fork inside in non-main posix threads
             warnings.warn(
-                'Multiprocessing backed parallel loops cannot be nested'
+                'Multiprocessing-backed parallel loops cannot be nested'
                 ' below threads, setting n_jobs=1',
                 stacklevel=3)
             return 1
